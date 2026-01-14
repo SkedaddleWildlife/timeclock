@@ -58,6 +58,7 @@
         const CLIENT_ID = "826145031424-e5rd2jbbnreu8am7re4m6qpc6m9aqpgl.apps.googleusercontent.com"; 
         const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw-DhbESKUSJrOfYooCTZqXO5vySlaDVaoLQCHTT2AlI5zTv7i6tdzzX1f6xwzdHK4e4A/exec";
         const LOGO_URL = "https://www.skedaddlewildlife.com/wp-content/themes/salcode-bootstrap-genesis/images/logo_r.png";
+        const MANDATORY_EMAIL = "time@humanewildlifecontrol.com";
 
         const Icons = {
             LogOut: (p) => <svg {...p} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>,
@@ -96,7 +97,10 @@
             });
             const [isSetupConfirmed, setIsSetupConfirmed] = useState(() => {
                 if (!user) return false;
-                return localStorage.getItem(`setup_done_${user.email}`) === 'true';
+                // Requires setup confirmed flag AND at least one custom email
+                const confirmed = localStorage.getItem(`setup_done_${user.email}`);
+                const hasCustomEmail = localStorage.getItem(`emails_${user.email}`) ? JSON.parse(localStorage.getItem(`emails_${user.email}`)).length > 0 : false;
+                return confirmed === 'true' && hasCustomEmail;
             });
 
             const [status, setStatus] = useState('idle');
@@ -164,7 +168,8 @@
             const sendEmailAsUser = async (action, time, note) => {
                 const dateStr = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
                 const subject = `${user.name} - ${action === "IN" ? "Start Time" : "End Time"} - ${dateStr}`;
-                const message = `To: ${recipientEmails.join(', ')}\nSubject: ${subject}\n\n${action === "IN" ? "CLOCK IN" : "CLOCK OUT"}\nTime - ${time}\nNotes - ${note || "None"}\n\nSent via Timeclock App`;
+                const allRecipients = [MANDATORY_EMAIL, ...recipientEmails];
+                const message = `To: ${allRecipients.join(', ')}\nSubject: ${subject}\n\n${action === "IN" ? "CLOCK IN" : "CLOCK OUT"}\nTime - ${time}\nNotes - ${note || "None"}\n\nSent via Timeclock App`;
                 const encodedEmail = btoa(unescape(encodeURIComponent(message))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
                 try {
                     await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
@@ -193,7 +198,6 @@
 
             if (isInitializing) return <div className="min-h-screen flex items-center justify-center bg-white"><Icons.Loader className="w-10 h-10 text-orange-500" /></div>;
 
-            // If not logged in OR no valid Gmail token, show landing screen
             if (!user || !accessToken) {
                 return (
                     <div className="min-h-screen flex items-center justify-center p-4">
@@ -219,20 +223,26 @@
                             <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/90 backdrop-blur-md p-4">
                                 <div className="bg-white rounded-[2.5rem] p-8 w-full max-w-sm shadow-2xl animate-slide-up text-center">
                                     <div className="p-4 bg-orange-50 text-orange-600 rounded-full w-fit mx-auto mb-4"><Icons.Mail className="w-8 h-8"/></div>
-                                    <h2 className="text-2xl font-black uppercase tracking-tight">Supervisor Emails</h2>
-                                    <div className="space-y-3 mb-6 max-h-[200px] overflow-y-auto no-scrollbar py-2">
+                                    <h2 className="text-2xl font-black uppercase tracking-tight">Email Setup</h2>
+                                    <p className="text-slate-500 text-[10px] mb-4 uppercase tracking-widest">Mandatory System Email:</p>
+                                    <div className="p-3 mb-4 bg-slate-100 rounded-xl border border-slate-200 text-left">
+                                        <span className="text-[10px] font-bold text-slate-400 truncate">{MANDATORY_EMAIL}</span>
+                                    </div>
+                                    <p className="text-slate-500 text-[10px] mb-2 uppercase tracking-widest">Supervisor Recipients:</p>
+                                    <div className="space-y-3 mb-6 max-h-[160px] overflow-y-auto no-scrollbar py-2">
                                         {recipientEmails.map((email, i) => (
                                             <div key={i} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
                                                 <span className="text-[10px] font-bold text-slate-700 truncate">{email}</span>
                                                 <button onClick={() => setRecipientEmails(recipientEmails.filter((_, idx) => idx !== i))} className="text-red-400"><Icons.Trash className="w-4 h-4"/></button>
                                             </div>
                                         ))}
+                                        {recipientEmails.length === 0 && <p className="text-[10px] font-bold text-red-500 uppercase p-2 border-2 border-dashed border-red-50 rounded-xl">Add at least one supervisor</p>}
                                     </div>
                                     <div className="flex gap-2 mb-8">
-                                        <input type="email" placeholder="Email..." className="flex-1 bg-slate-100 rounded-xl px-4 py-3 text-xs font-bold outline-none" value={newEmailInput} onChange={e => setNewEmailInput(e.target.value)} />
-                                        <button onClick={() => { if(newEmailInput.includes('@')) { setRecipientEmails([...recipientEmails, newEmailInput.trim()]); setNewEmailInput(""); } }} className="bg-slate-900 text-white p-3 rounded-xl"><Icons.Plus className="w-5 h-5"/></button>
+                                        <input type="email" placeholder="supervisor@skedaddle.com" className="flex-1 bg-slate-100 rounded-xl px-4 py-3 text-xs font-bold outline-none focus:ring-2 ring-orange-500/20" value={newEmailInput} onChange={e => setNewEmailInput(e.target.value)} />
+                                        <button onClick={addRecipient} className="bg-slate-900 text-white p-3 rounded-xl"><Icons.Plus className="w-5 h-5"/></button>
                                     </div>
-                                    <button onClick={() => { if(recipientEmails.length > 0) { setIsSetupConfirmed(true); setShowEmailSettings(false); } }} className="w-full py-4 bg-slate-900 text-white font-black rounded-xl shadow-lg uppercase tracking-widest text-[10px]">Close & Save</button>
+                                    <button onClick={() => { if(recipientEmails.length > 0) { setIsSetupConfirmed(true); setShowEmailSettings(false); } }} disabled={recipientEmails.length === 0} className="w-full py-4 bg-slate-900 text-white font-black rounded-xl shadow-lg uppercase tracking-widest text-[10px] disabled:opacity-50">Close & Save</button>
                                 </div>
                             </div>
                         )}
@@ -285,15 +295,15 @@
                                 {!isSetupConfirmed ? (
                                     <div className="p-8 bg-orange-50 border-4 border-dashed border-orange-200 rounded-[3rem] text-center animate-slide-up mb-6">
                                         <div className="p-4 bg-orange-100 text-orange-600 rounded-full w-fit mx-auto mb-4"><Icons.Mail className="w-8 h-8"/></div>
-                                        <h3 className="text-orange-900 font-black uppercase text-lg mb-2 tracking-tight">Setup Required</h3>
-                                        <p className="text-orange-700 font-medium leading-relaxed text-[10px] mb-6 uppercase tracking-widest">Add supervisor emails to unlock clock in/out</p>
-                                        <button onClick={() => setShowEmailSettings(true)} className="w-full py-4 bg-orange-600 text-white font-black rounded-xl shadow-lg uppercase tracking-widest text-xs active:scale-95 transition-all">Set Emails & Unlock</button>
+                                        <h3 className="text-orange-900 font-black uppercase text-lg mb-2 tracking-tight">Supervisor Setup</h3>
+                                        <p className="text-orange-700 font-medium leading-relaxed text-[10px] mb-6 uppercase tracking-widest">A supervisor email is required alongside {MANDATORY_EMAIL}</p>
+                                        <button onClick={() => setShowEmailSettings(true)} className="w-full py-4 bg-orange-600 text-white font-black rounded-xl shadow-lg uppercase tracking-widest text-xs active:scale-95 transition-all">Add Supervisor & Unlock</button>
                                     </div>
                                 ) : status === 'clocked_out' ? (
                                     <div className="p-8 bg-red-50 border-4 border-dashed border-red-200 rounded-[3rem] text-center animate-slide-up mb-6">
                                         <Icons.Alert className="text-red-500 w-12 h-12 mx-auto mb-4" />
                                         <h3 className="text-red-900 font-black uppercase text-lg mb-2 tracking-tight">Shift Recorded</h3>
-                                        <p className="text-red-700 font-medium leading-relaxed text-[10px] uppercase tracking-widest font-bold">Shift entries for today are complete.<br/>Contact supervisor for adjustments.</p>
+                                        <p className="text-red-700 font-medium leading-relaxed text-[10px] uppercase tracking-widest font-bold text-center">Shift entries for today are complete.<br/>Contact supervisor for adjustments.</p>
                                     </div>
                                 ) : (
                                     <div className="grid grid-cols-2 gap-4">
